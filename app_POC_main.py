@@ -11,7 +11,7 @@ scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 creds_dict = json.loads(st.secrets["GSHEET_CREDS"])
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
-sheet = client.open("UserAnswers").sheet1  # Name of your sheet
+sheet = client.open_by_key(st.secrets["AnswerStorage_Sheet_ID"]).sheet1  # Name of your sheet
 
 # --- Secrets ---
 DEEPSEEK_API_KEY = st.secrets["DEEPSEEK_API_KEY"]
