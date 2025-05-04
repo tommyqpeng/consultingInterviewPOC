@@ -1,12 +1,23 @@
 import streamlit as st
 import requests
 import json
+import gspread
+import re
+from datetime import datetime
+from oauth2client.service_account import ServiceAccountCredentials
+
+# --- Google Sheets Setup ---
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds_dict = json.loads(st.secrets["GSHEET_CREDS"])
+creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+client = gspread.authorize(creds)
+sheet = client.open("UserAnswers").sheet1  # Name of your sheet
 
 # --- Secrets ---
 DEEPSEEK_API_KEY = st.secrets["DEEPSEEK_API_KEY"]
 APP_PASSWORD = st.secrets["APP_PASSWORD"]
 
-# --- Session State: Password Protection ---
+# --- Session State for Auth ---
 if "password_attempts" not in st.session_state:
     st.session_state.password_attempts = 0
 if "authenticated" not in st.session_state:
@@ -15,7 +26,7 @@ if "authenticated" not in st.session_state:
 # --- UI Title ---
 st.title("Interview Coaching GPT (Powered by DeepSeek)")
 
-# --- Password Logic ---
+# --- Password Gate ---
 if st.session_state.password_attempts >= 3:
     st.error("Too many incorrect attempts. Please reload the page to try again.")
     st.stop()
@@ -30,7 +41,7 @@ if not st.session_state.authenticated:
             st.warning(f"Incorrect password. Attempts left: {3 - st.session_state.password_attempts}")
     st.stop()
 
-# --- Updated Case Question ---
+# --- Case Question ---
 question = """
 **Client goal**  
 Our client is SuperSoda, a top-three beverage producer in the United States that has approached McKinsey for help designing its product launch strategy.  
@@ -47,7 +58,7 @@ SuperSoda’s vice president of marketing has asked McKinsey to help analyze key
 What key factors should SuperSoda consider when deciding whether or not to launch Electro-Light?
 """
 
-# --- Rubric for Scoring ---
+# --- Scoring Rubric ---
 RUBRIC = """
 Score this case interview answer (0–100) using the following criteria:
 1. Whether the person clarified the context
@@ -55,12 +66,12 @@ Score this case interview answer (0–100) using the following criteria:
 3. Whether the person came up with a framework with 3 to 4 buckets
 4. Whether the person presented the buckets in a top-down format, where they introduce what's inside the 3 to 4 buckets
 5. Whether the content of the buckets are specific to the case
-6. Whether the person ended with an specific area to priortise analysis of for the next question
+6. Whether the person ended with a specific area to prioritize analysis of for the next question
 Provide a numeric score and 1 sentence of feedback for each criteria.
 """
 
 # --- Main UI ---
-st.markdown("Interview Question")
+st.markdown("### Interview Question")
 st.markdown(question)
 user_input = st.text_area("Paste your answer here (max ~200 words):", height=200)
 
@@ -92,6 +103,15 @@ if st.button("Get Feedback") and user_input.strip():
             st.success("Done!")
             st.markdown("### 🔍 Feedback:")
             st.write(feedback)
+
+            # --- Robust Score Extraction (avg of all 0–100 numbers) ---
+            scores = [int(s) for s in re.findall(r"\b([0-9]{1,2}|100)\b", feedback)]
+            avg_score = round(sum(scores) / len(scores), 1) if scores else "N/A"
+
+            # --- Append to Google Sheet ---
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            sheet.append_row([timestamp, user_input.strip(), feedback.strip(), avg_score])
+            st.info("📄 Your answer and feedback have been saved to Google Sheets.")
         else:
             st.error(f"❌ API Error: {response.status_code}")
             st.code(response.text)
