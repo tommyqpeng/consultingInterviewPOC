@@ -1,56 +1,81 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sun May  4 18:20:24 2025
-
-@author: tommy
-"""
-
 import streamlit as st
 import requests
 import json
 
-# --- Load secrets from Streamlit Cloud or local secrets.toml ---
+# --- Secrets ---
 DEEPSEEK_API_KEY = st.secrets["DEEPSEEK_API_KEY"]
 APP_PASSWORD = st.secrets["APP_PASSWORD"]
 
-# --- Password Gate ---
+# --- Session State: Password Protection ---
+if "password_attempts" not in st.session_state:
+    st.session_state.password_attempts = 0
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+# --- UI Title ---
 st.title("Interview Coaching GPT (Powered by DeepSeek)")
-password = st.text_input("Enter access password", type="password")
-if password != APP_PASSWORD:
-    st.warning("Please enter the correct password to continue.")
+
+# --- Password Logic ---
+if st.session_state.password_attempts >= 3:
+    st.error("Too many incorrect attempts. Please reload the page to try again.")
     st.stop()
 
-# --- Interview Prompt ---
-question = "Our client, a cement company CementX from Australia would like to enter the Chinese market. What are some key considerations?"
+if not st.session_state.authenticated:
+    password = st.text_input("Enter access password", type="password")
+    if st.button("Submit Password"):
+        if password == APP_PASSWORD:
+            st.session_state.authenticated = True
+        else:
+            st.session_state.password_attempts += 1
+            st.warning(f"Incorrect password. Attempts left: {3 - st.session_state.password_attempts}")
+    st.stop()
 
-# --- Scoring Rubric ---
-RUBRIC = """
-Score this case interview answer (0–10) using the following criteria:
-1. Problem structuring and logic
-2. Business judgment
-3. Communication clarity
-4. Insightfulness
+# --- Updated Case Question ---
+question = """
+**Client goal**  
+Our client is SuperSoda, a top-three beverage producer in the United States that has approached McKinsey for help designing its product launch strategy.  
 
-Provide a numeric score and 2–3 sentences of feedback.
+**Situation description**  
+As an integrated beverage company, SuperSoda leads its own brand design, marketing, and sales efforts. The company also owns its entire beverage supply chain, including production of concentrates, bottling and packaging, and distribution to retail outlets. SuperSoda has a considerable number of brands across carbonated and noncarbonated drinks, five large bottling plants throughout the country, and distribution agreements with most major retailers.
+
+SuperSoda is evaluating the launch of a new product, a flavored sports drink called “Electro-Light.” Sports drinks are usually designed to replenish energy, with sugars, and electrolytes, or salts, in the body. However, Electro-Light has been formulated to focus more on the replenishment of electrolytes and has a lower sugar content compared to most other sports drinks. The company expects this new beverage to capitalize on the recent trend away from high-sugar products.
+
+**McKinsey study**  
+SuperSoda’s vice president of marketing has asked McKinsey to help analyze key factors surrounding the launch of Electro-Light and its own internal capabilities to support that effort.  
+
+**Question**  
+What key factors should SuperSoda consider when deciding whether or not to launch Electro-Light?
 """
 
-# --- UI ---
-st.markdown(f"###Interview Question:\n**{question}**")
-user_input = st.text_area("Paste your answer here:", height=200)
+# --- Rubric for Scoring ---
+RUBRIC = """
+Score this case interview answer (0–100) using the following criteria:
+1. Whether the person clarified the context
+2. Whether the person asked for time to consider the question
+3. Whether the person came up with a framework with 3 to 4 buckets
+4. Whether the person presented the buckets in a top-down format, where they introduce what's inside the 3 to 4 buckets
+5. Whether the content of the buckets are specific to the case
+6. Whether the person ended with an specific area to priortise analysis of for the next question
+Provide a numeric score and 1 sentence of feedback for each criteria.
+"""
+
+# --- Main UI ---
+st.markdown("Interview Question")
+st.markdown(question)
+user_input = st.text_area("Paste your answer here (max ~200 words):", height=200)
 
 if st.button("Get Feedback") and user_input.strip():
     with st.spinner("Analyzing your response with DeepSeek..."):
-
         headers = {
             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
             "Content-Type": "application/json"
         }
 
         payload = {
-            "model": "deepseek-chat",  # change if you're using a different model like deepseek-coder
+            "model": "deepseek-chat",
             "messages": [
                 {"role": "system", "content": "You are a McKinsey case interview coach scoring responses."},
-                {"role": "user", "content": f"{RUBRIC}\n\nInterview question: {question}\nCandidate's answer:\n{user_input}"}
+                {"role": "user", "content": f"{RUBRIC}\n\nInterview question:\n{question}\n\nCandidate's answer:\n{user_input}"}
             ],
             "temperature": 0.4
         }
