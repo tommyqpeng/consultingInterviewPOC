@@ -31,15 +31,21 @@ if st.session_state.password_attempts >= 3:
     st.error("Too many incorrect attempts. Please reload the page to try again.")
     st.stop()
 
+# Persist the password input across reruns
+if "password_input" not in st.session_state:
+    st.session_state.password_input = ""
+
 if not st.session_state.authenticated:
-    password = st.text_input("Enter access password", type="password")
+    st.session_state.password_input = st.text_input("Enter access password", type="password")
     if st.button("Submit Password"):
-        if password == APP_PASSWORD:
+        if st.session_state.password_input == APP_PASSWORD:
             st.session_state.authenticated = True
         else:
             st.session_state.password_attempts += 1
             st.warning(f"Incorrect password. Attempts left: {3 - st.session_state.password_attempts}")
-    st.stop()
+    if not st.session_state.authenticated:
+        st.stop()
+
 
 # --- Case Question ---
 question = """
@@ -73,7 +79,7 @@ Provide a numeric score and 1 sentence of feedback for each criteria.
 # --- Main UI ---
 st.markdown("### Interview Question")
 st.markdown(question)
-user_input = st.text_area("Paste your answer here (max ~200 words):", height=200)
+user_input = st.text_area("Write your answer here:", height=200)
 
 if st.button("Get Feedback") and user_input.strip():
     with st.spinner("Analyzing your response..."):
