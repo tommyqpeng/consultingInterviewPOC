@@ -24,7 +24,7 @@ if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 # --- UI Title ---
-st.title("Interview Coaching GPT (Powered by DeepSeek)")
+st.title("Interview Question Survey")
 
 # --- Password Gate ---
 if st.session_state.password_attempts >= 3:
@@ -76,7 +76,7 @@ st.markdown(question)
 user_input = st.text_area("Paste your answer here (max ~200 words):", height=200)
 
 if st.button("Get Feedback") and user_input.strip():
-    with st.spinner("Analyzing your response with DeepSeek..."):
+    with st.spinner("Analyzing your response..."):
         headers = {
             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
             "Content-Type": "application/json"
@@ -100,9 +100,9 @@ if st.button("Get Feedback") and user_input.strip():
         if response.status_code == 200:
             result = response.json()
             feedback = result["choices"][0]["message"]["content"]
-            st.success("Done!")
-            st.markdown("### 🔍 Feedback:")
-            st.write(feedback)
+            # st.success("Done!")
+            # st.markdown("### Feedback:")
+            # st.write(feedback)
 
             # --- Robust Score Extraction (avg of all 0–100 numbers) ---
             scores = [int(s) for s in re.findall(r"\b([0-9]{1,2}|100)\b", feedback)]
@@ -111,7 +111,7 @@ if st.button("Get Feedback") and user_input.strip():
             # --- Append to Google Sheet ---
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             sheet.append_row([timestamp, user_input.strip(), feedback.strip(), avg_score])
-            st.info("📄 Your answer and feedback have been saved to Google Sheets.")
+            st.info("Your answer have been logged.")
         else:
-            st.error(f"❌ API Error: {response.status_code}")
-            st.code(response.text)
+            st.error(f"API Error: {response.status_code}")
+            # st.code(response.text)
