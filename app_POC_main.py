@@ -81,7 +81,7 @@ st.markdown("### Interview Question")
 st.markdown(question)
 user_input = st.text_area("Write your answer here:", height=200)
 
-if st.button("Get Feedback") and user_input.strip():
+if st.button("Submit") and user_input.strip():
     with st.spinner("Analyzing your response..."):
         headers = {
             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -117,7 +117,7 @@ if st.button("Get Feedback") and user_input.strip():
             # --- Append to Google Sheet ---
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             sheet.append_row([timestamp, user_input.strip(), feedback.strip(), avg_score])
-            st.info("Your answer have been logged.")
+            st.info("Your answer has been logged.")
         else:
             st.error(f"API Error: {response.status_code}")
             # st.code(response.text)
