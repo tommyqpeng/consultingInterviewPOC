@@ -66,14 +66,14 @@ What key factors should SuperSoda consider when deciding whether or not to launc
 
 # --- Scoring Rubric ---
 RUBRIC = """
-Score this case interview answer (0–100) using the following criteria:
+Score this case interview answer using the following criteria:
 1. Whether the person clarified the context
 2. Whether the person asked for time to consider the question
 3. Whether the person came up with a framework with 3 to 4 buckets
 4. Whether the person presented the buckets in a top-down format, where they introduce what's inside the 3 to 4 buckets
 5. Whether the content of the buckets are specific to the case
 6. Whether the person ended with a specific area to prioritize analysis of for the next question
-Provide a numeric score and 1 sentence of feedback for each criteria.
+Provide a score (poor, acceptable, or good) and 1 sentence of feedback for each criteria.
 """
 
 # --- Main UI ---
@@ -106,9 +106,9 @@ if st.button("Submit") and user_input.strip():
         if response.status_code == 200:
             result = response.json()
             feedback = result["choices"][0]["message"]["content"]
-            # st.success("Done!")
-            # st.markdown("### Feedback:")
-            # st.write(feedback)
+            st.success("Done!")
+            st.markdown("### Feedback:")
+            st.write(feedback)
 
             # --- Robust Score Extraction (avg of all 0–100 numbers) ---
             scores = [int(s) for s in re.findall(r"\b([0-9]{1,2}|100)\b", feedback)]
@@ -120,4 +120,4 @@ if st.button("Submit") and user_input.strip():
             st.info("Your answer has been logged.")
         else:
             st.error(f"API Error: {response.status_code}")
-            # st.code(response.text)
+            st.code(response.text)
