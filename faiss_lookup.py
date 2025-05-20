@@ -12,6 +12,7 @@ import numpy as np
 from io import BytesIO
 from sentence_transformers import SentenceTransformer
 import streamlit as st
+import tempfile
 
 class AnswerRetriever:
     def __init__(self, faiss_url: str, metadata_url: str, model_name: str = "all-MiniLM-L6-v2"):
@@ -27,7 +28,10 @@ class AnswerRetriever:
         if self._index is None:
             response = requests.get(self.faiss_url)
             response.raise_for_status()
-            self._index = faiss.read_index(BytesIO(response.content))
+            with tempfile.NamedTemporaryFile(delete=False) as tmp:
+                tmp.write(response.content)
+                tmp.flush()
+                self._index = faiss.read_index(tmp.name)
         return self._index
 
     @property
