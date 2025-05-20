@@ -5,13 +5,14 @@ import gspread
 import re
 from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
+from faiss_lookup import AnswerRetriever
 
 # --- Google Sheets Setup ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_dict = json.loads(st.secrets["GSHEET_CREDS"])
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
-sheet = client.open_by_key(st.secrets["AnswerStorage_Sheet_ID"]).sheet1  # Name of your sheet
+sheet = client.open_by_key(st.secrets["AnswerStorage_Sheet_ID"]).sheet1
 
 # --- Secrets ---
 DEEPSEEK_API_KEY = st.secrets["DEEPSEEK_API_KEY"]
@@ -26,12 +27,22 @@ if "authenticated" not in st.session_state:
 # --- UI Title ---
 st.title("Interview Question Survey")
 
+# --- Load FAISS Answer Retriever ---
+@st.cache_resource
+def load_retriever():
+    return AnswerRetriever(
+        faiss_url=st.secrets["FAISS_INDEX_URL"],
+        metadata_url=st.secrets["METADATA_URL"],
+        model_name="all-MiniLM-L6-v2"
+    )
+
+retriever = load_retriever()
+
 # --- Password Gate ---
 if st.session_state.password_attempts >= 3:
     st.error("Too many incorrect attempts. Please reload the page to try again.")
     st.stop()
 
-# Persist the password input across reruns
 if "password_input" not in st.session_state:
     st.session_state.password_input = ""
 
@@ -45,7 +56,6 @@ if not st.session_state.authenticated:
             st.warning(f"Incorrect password. Attempts left: {3 - st.session_state.password_attempts}")
     if not st.session_state.authenticated:
         st.stop()
-
 
 # --- Case Question ---
 question = """
@@ -83,16 +93,39 @@ user_input = st.text_area("Write your answer here:", height=200)
 
 if st.button("Submit") and user_input.strip():
     with st.spinner("Analyzing your response..."):
+
+        # --- Retrieve similar feedback examples for internal LLM use only ---
+        neighbors = retriever.get_nearest_neighbors(user_input, n=3)
+        retrieved_examples = "\n".join(
+            f"Past Answer: {item['answer']}\nFeedback Given: {item['feedback']}\n"
+            for item in neighbors
+        )
+
         headers = {
             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
             "Content-Type": "application/json"
         }
 
+        prompt = f"""
+{RUBRIC}
+
+Interview question:
+{question}
+
+Here are some examples of past candidate answers and the feedback they received:
+{retrieved_examples}
+
+Now, evaluate the following candidate's answer. Score each of the rubric points (poor/acceptable/good) and give one sentence of feedback for each:
+
+Candidate's answer:
+{user_input}
+"""
+
         payload = {
             "model": "deepseek-chat",
             "messages": [
                 {"role": "system", "content": "You are a McKinsey case interview coach scoring responses."},
-                {"role": "user", "content": f"{RUBRIC}\n\nInterview question:\n{question}\n\nCandidate's answer:\n{user_input}"}
+                {"role": "user", "content": prompt}
             ],
             "temperature": 0.4
         }
@@ -110,11 +143,11 @@ if st.button("Submit") and user_input.strip():
             st.markdown("### Feedback:")
             st.write(feedback)
 
-            # --- Robust Score Extraction (avg of all 0–100 numbers) ---
+            # --- Score Parsing ---
             scores = [int(s) for s in re.findall(r"\b([0-9]{1,2}|100)\b", feedback)]
             avg_score = round(sum(scores) / len(scores), 1) if scores else "N/A"
 
-            # --- Append to Google Sheet ---
+            # --- Log to Google Sheet ---
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             sheet.append_row([timestamp, user_input.strip(), feedback.strip(), avg_score])
             st.info("Your answer has been logged.")
