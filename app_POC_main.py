@@ -5,7 +5,8 @@ import gspread
 import re
 from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
-from faiss_lookup import AnswerRetriever
+from cryptography.fernet import Fernet
+from faiss_lookup import EncryptedAnswerRetriever
 
 # --- Google Sheets Setup ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -17,6 +18,7 @@ sheet = client.open_by_key(st.secrets["AnswerStorage_Sheet_ID"]).sheet1
 # --- Secrets ---
 DEEPSEEK_API_KEY = st.secrets["DEEPSEEK_API_KEY"]
 APP_PASSWORD = st.secrets["APP_PASSWORD"]
+DECRYPTION_KEY = st.secrets["DECRYPTION_KEY"].encode()
 
 # --- Session State for Auth ---
 if "password_attempts" not in st.session_state:
@@ -30,9 +32,10 @@ st.title("Interview Question Survey")
 # --- Load FAISS Answer Retriever ---
 @st.cache_resource
 def load_retriever():
-    return AnswerRetriever(
-        index_path="faiss_index.index",
-        metadata_path="metadata.pkl",
+    return EncryptedAnswerRetriever(
+        encrypted_index_path="faiss_index.encrypted",
+        encrypted_meta_path="metadata.encrypted",
+        decryption_key=DECRYPTION_KEY,
         model_name="all-MiniLM-L6-v2"
     )
 
@@ -94,7 +97,6 @@ user_input = st.text_area("Write your answer here:", height=200)
 if st.button("Submit") and user_input.strip():
     with st.spinner("Analyzing your response..."):
 
-        # --- Retrieve similar feedback examples for internal LLM use only ---
         neighbors = retriever.get_nearest_neighbors(user_input, n=3)
         retrieved_examples = "\n".join(
             f"Past Answer: {item['answer']}\nFeedback Given: {item['feedback']}\n"
@@ -143,11 +145,9 @@ Candidate's answer:
             st.markdown("### Feedback:")
             st.write(feedback)
 
-            # --- Score Parsing ---
             scores = [int(s) for s in re.findall(r"\b([0-9]{1,2}|100)\b", feedback)]
             avg_score = round(sum(scores) / len(scores), 1) if scores else "N/A"
 
-            # --- Log to Google Sheet ---
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             sheet.append_row([timestamp, user_input.strip(), feedback.strip(), avg_score])
             st.info("Your answer has been logged.")
