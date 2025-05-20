@@ -7,17 +7,12 @@ Created on Tue May 20 12:44:53 2025
 
 import faiss
 import pickle
-import requests
-import numpy as np
-from io import BytesIO
 from sentence_transformers import SentenceTransformer
-import streamlit as st
-import tempfile
 
 class AnswerRetriever:
-    def __init__(self, faiss_url: str, metadata_url: str, model_name: str = "all-MiniLM-L6-v2"):
-        self.faiss_url = faiss_url
-        self.metadata_url = metadata_url
+    def __init__(self, index_path: str, metadata_path: str, model_name: str = "all-MiniLM-L6-v2"):
+        self.index_path = index_path
+        self.metadata_path = metadata_path
         self.model_name = model_name
         self._index = None
         self._metadata = None
@@ -26,20 +21,14 @@ class AnswerRetriever:
     @property
     def index(self):
         if self._index is None:
-            response = requests.get(self.faiss_url)
-            response.raise_for_status()
-            with tempfile.NamedTemporaryFile(delete=False) as tmp:
-                tmp.write(response.content)
-                tmp.flush()
-                self._index = faiss.read_index(tmp.name)
+            self._index = faiss.read_index(self.index_path)
         return self._index
 
     @property
     def metadata(self):
         if self._metadata is None:
-            response = requests.get(self.metadata_url)
-            response.raise_for_status()
-            self._metadata = pickle.load(BytesIO(response.content))
+            with open(self.metadata_path, "rb") as f:
+                self._metadata = pickle.load(f)
         return self._metadata
 
     @property

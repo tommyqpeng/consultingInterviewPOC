@@ -31,8 +31,8 @@ st.title("Interview Question Survey")
 @st.cache_resource
 def load_retriever():
     return AnswerRetriever(
-        faiss_url=st.secrets["FAISS_INDEX_URL"],
-        metadata_url=st.secrets["METADATA_URL"],
+        index_path="faiss_index.index",
+        metadata_path="metadata.pkl",
         model_name="all-MiniLM-L6-v2"
     )
 
