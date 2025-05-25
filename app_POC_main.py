@@ -79,15 +79,34 @@ What key factors should SuperSoda consider when deciding whether or not to launc
 
 # --- Scoring Rubric ---
 RUBRIC = """
-Score this case interview answer using the following criteria:
-1. Whether the person clarified the context
-2. Whether the person asked for time to consider the question
-3. Whether the person came up with a framework with 3 to 4 buckets
-4. Whether the person presented the buckets in a top-down format, where they introduce what's inside the 3 to 4 buckets
-5. Whether the content of the buckets are specific to the case
-6. Whether the person ended with a specific area to prioritize analysis of for the next question
-Provide a score (poor, acceptable, or good) and 1 sentence of feedback for each criteria.
+You are an expert case interview coach.
+
+You will be given a candidate's response to a case interview question. First, assess whether the response is relevant to the case question. 
+If it is not relevant (e.g. contains filler text, off-topic discussion, or fails to engage with the case), respond with:  
+**"The response is not relevant to the case question and cannot be assessed."**
+
+If the response *is* relevant, evaluate it using the six criteria below. For each criterion, assign one of the following scores: 
+**poor**, **acceptable**, or **good**. Then provide one concise, specific sentence of feedback that explains why the answer was rated that way. 
+The feedback must refer specifically to the candidate's answer and the case context, not be generic.
+
+### Scoring Criteria:
+1. Clarified the context — Did the candidate restate or clarify any part of the case question before answering?
+2. Asked for time — Did the candidate ask for a moment to structure their thoughts before answering?
+3. Used a structured framework — Did the candidate organize their answer into 3 to 4 logical MECE buckets?
+4. Presented buckets top-down — Did the candidate introduce the buckets before diving into their details?
+5. Case-specific content — Were the buckets and their contents tailored to the specifics of this case (not generic business lingo)?
+6. Prioritized an area — Did the candidate conclude by prioritizing one area for deeper analysis or next steps?
+
+Your output should be a 6-point evaluation with the format:
+
+1. Clarified the context: [score] – [feedback]
+2. Asked for time: [score] – [feedback]
+3. Used a structured framework: [score] – [feedback]
+4. Presented buckets top-down: [score] – [feedback]
+5. Case-specific content: [score] – [feedback]
+6. Prioritized an area: [score] – [feedback]
 """
+
 
 # --- Main UI ---
 st.markdown("### Interview Question")
@@ -126,7 +145,7 @@ Candidate's answer:
         payload = {
             "model": "deepseek-chat",
             "messages": [
-                {"role": "system", "content": "You are a McKinsey case interview coach scoring responses."},
+                {"role": "system", "content": "You are a McKinsey case interview coach scoring responses. "},
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.4
