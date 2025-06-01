@@ -1,35 +1,52 @@
 import streamlit as st
-import requests
-import json
 import gspread
-import re
-from datetime import datetime
+import json
 from oauth2client.service_account import ServiceAccountCredentials
-from cryptography.fernet import Fernet
 from faiss_lookup import EncryptedAnswerRetriever
+from util_functions import build_prompt, generate_feedback, decrypt_file
+from datetime import datetime
 
-# --- Google Sheets Setup ---
+# --- Setup ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_dict = json.loads(st.secrets["GSHEET_CREDS"])
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
 sheet = client.open_by_key(st.secrets["AnswerStorage_Sheet_ID"]).sheet1
 
-# --- Secrets ---
-DEEPSEEK_API_KEY = st.secrets["DEEPSEEK_API_KEY"]
 APP_PASSWORD = st.secrets["APP_PASSWORD"]
+DEEPSEEK_API_KEY = st.secrets["DEEPSEEK_API_KEY"]
 DECRYPTION_KEY = st.secrets["DECRYPTION_KEY"].encode()
 
-# --- Session State for Auth ---
-if "password_attempts" not in st.session_state:
-    st.session_state.password_attempts = 0
+# --- State & Auth ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
+if "password_attempts" not in st.session_state:
+    st.session_state.password_attempts = 0
 
-# --- UI Title ---
 st.title("Interview Question Survey")
 
-# --- Load FAISS Answer Retriever ---
+# --- Password ---
+if not st.session_state.authenticated:
+    if st.session_state.password_attempts >= 3:
+        st.error("Too many incorrect attempts.")
+        st.stop()
+    password = st.text_input("Enter access password", type="password")
+    if st.button("Submit Password"):
+        if password == APP_PASSWORD:
+            st.session_state.authenticated = True
+        else:
+            st.session_state.password_attempts += 1
+            st.warning("Incorrect password.")
+    st.stop()
+
+# --- Load prompt and rubric ---
+prompt_data = decrypt_file("prompts.json.encrypted", DECRYPTION_KEY)
+question = prompt_data["question"]
+rubric = prompt_data["rubric"]
+system_role = prompt_data["system_role"]
+generation_instructions = prompt_data["generation_instructions"]
+
+# --- Load Retriever ---
 @st.cache_resource
 def load_retriever():
     return EncryptedAnswerRetriever(
@@ -38,138 +55,26 @@ def load_retriever():
         decryption_key=DECRYPTION_KEY,
         model_name="all-MiniLM-L6-v2"
     )
-
 retriever = load_retriever()
 
-# --- Password Gate ---
-if st.session_state.password_attempts >= 3:
-    st.error("Too many incorrect attempts. Please reload the page to try again.")
-    st.stop()
-
-if "password_input" not in st.session_state:
-    st.session_state.password_input = ""
-
-if not st.session_state.authenticated:
-    st.session_state.password_input = st.text_input("Enter access password", type="password")
-    if st.button("Submit Password"):
-        if st.session_state.password_input == APP_PASSWORD:
-            st.session_state.authenticated = True
-        else:
-            st.session_state.password_attempts += 1
-            st.warning(f"Incorrect password. Attempts left: {3 - st.session_state.password_attempts}")
-    if not st.session_state.authenticated:
-        st.stop()
-
-# --- Case Question ---
-question = """
-**Client goal**  
-Our client is SuperSoda, a top-three beverage producer in the United States that has approached McKinsey for help designing its product launch strategy.  
-
-**Situation description**  
-As an integrated beverage company, SuperSoda leads its own brand design, marketing, and sales efforts. The company also owns its entire beverage supply chain, including production of concentrates, bottling and packaging, and distribution to retail outlets. SuperSoda has a considerable number of brands across carbonated and noncarbonated drinks, five large bottling plants throughout the country, and distribution agreements with most major retailers.
-
-SuperSoda is evaluating the launch of a new product, a flavored sports drink called “Electro-Light.” Sports drinks are usually designed to replenish energy, with sugars, and electrolytes, or salts, in the body. However, Electro-Light has been formulated to focus more on the replenishment of electrolytes and has a lower sugar content compared to most other sports drinks. The company expects this new beverage to capitalize on the recent trend away from high-sugar products.
-
-**McKinsey study**  
-SuperSoda’s vice president of marketing has asked McKinsey to help analyze key factors surrounding the launch of Electro-Light and its own internal capabilities to support that effort.  
-
-**Question**  
-What key factors should SuperSoda consider when deciding whether or not to launch Electro-Light?
-"""
-
-# --- Scoring Rubric ---
-RUBRIC = """
-You are an expert case interview coach.
-
-You will be given a candidate's response to a case interview question. First, assess whether the response is relevant to the case question. 
-If it is not relevant (e.g. contains filler text, off-topic discussion, or fails to engage with the case), respond with:  
-**"The response is not relevant to the case question and cannot be assessed."**
-
-If the response *is* relevant, evaluate it using the six criteria below. For each criterion, assign one of the following scores: 
-**poor**, **acceptable**, or **good**. Then provide one concise, specific sentence of feedback that explains why the answer was rated that way. 
-The feedback must refer specifically to the candidate's answer and the case context, not be generic.
-
-### Scoring Criteria:
-1. Clarified the context — Did the candidate restate or clarify any part of the case question before answering?
-2. Asked for time — Did the candidate ask for a moment to structure their thoughts before answering?
-3. Used a structured framework — Did the candidate organize their answer into 3 to 4 logical MECE buckets?
-4. Presented buckets top-down — Did the candidate introduce the buckets before diving into their details?
-5. Case-specific content — Were the buckets and their contents tailored to the specifics of this case (not generic business lingo)?
-6. Prioritized an area — Did the candidate conclude by prioritizing one area for deeper analysis or next steps?
-
-Your output should be a 6-point evaluation with the format:
-
-1. Clarified the context: [score] – [feedback]
-2. Asked for time: [score] – [feedback]
-3. Used a structured framework: [score] – [feedback]
-4. Presented buckets top-down: [score] – [feedback]
-5. Case-specific content: [score] – [feedback]
-6. Prioritized an area: [score] – [feedback]
-"""
-
-
-# --- Main UI ---
+# --- UI Input ---
 st.markdown("### Interview Question")
 st.markdown(question)
 user_input = st.text_area("Write your answer here:", height=200)
 
+# --- Process Answer ---
 if st.button("Submit") and user_input.strip():
-    with st.spinner("Analyzing your response..."):
+    with st.spinner("Processing..."):
+        examples = retriever.get_nearest_neighbors(user_input, n=3)
+        prompt = build_prompt(question, rubric, examples, user_input, generation_instructions)
+        feedback = generate_feedback(prompt, system_role, DEEPSEEK_API_KEY)
 
-        neighbors = retriever.get_nearest_neighbors(user_input, n=3)
-        retrieved_examples = "\n".join(
-            f"Past Answer: {item['answer']}\nFeedback Given: {item['feedback']}\n"
-            for item in neighbors
-        )
-
-        headers = {
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        prompt = f"""
-{RUBRIC}
-
-Interview question:
-{question}
-
-Here are some examples of past candidate answers and the feedback they received:
-{retrieved_examples}
-
-Now, evaluate the following candidate's answer. Score each of the rubric points (poor/acceptable/good) and give one sentence of feedback for each:
-
-Candidate's answer:
-{user_input}
-"""
-
-        payload = {
-            "model": "deepseek-chat",
-            "messages": [
-                {"role": "system", "content": "You are a McKinsey case interview coach scoring responses. "},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.4
-        }
-
-        response = requests.post(
-            "https://api.deepseek.com/v1/chat/completions",
-            headers=headers,
-            data=json.dumps(payload)
-        )
-
-        if response.status_code == 200:
-            result = response.json()
-            feedback = result["choices"][0]["message"]["content"]
+        if feedback:
             st.success("Done!")
-            st.markdown("### Feedback:")
+            st.markdown("### Feedback")
             st.write(feedback)
-
-            scores = [int(s) for s in re.findall(r"\b([0-9]{1,2}|100)\b", feedback)]
-            avg_score = round(sum(scores) / len(scores), 1) if scores else "N/A"
-
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            sheet.append_row([timestamp, user_input.strip(), feedback.strip(), avg_score])
+            sheet.append_row([timestamp, user_input.strip(), feedback.strip()])
             st.info("Your answer has been logged.")
         else:
-            st.error(f"API Error: {response.status_code}")
-            st.code(response.text)
+            st.error("API call failed.")
