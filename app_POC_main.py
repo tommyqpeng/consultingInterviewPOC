@@ -32,7 +32,7 @@ if not st.session_state.authenticated:
     if st.button("Submit Password"):
         if password == APP_PASSWORD:
             st.session_state.authenticated = True
-            st.experimental_rerun()
+            st.rerun()
         else:
             st.session_state.password_attempts += 1
             st.warning("Incorrect password.")
