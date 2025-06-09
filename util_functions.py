@@ -73,3 +73,18 @@ def generate_feedback(prompt, system_role, api_key, temperature=0.4):
         print(f"[DeepSeek API Error] {e}")
         print("Response text:", getattr(response, "text", "No response"))
         return None
+
+# --- Transcribe with Deepgram ---
+def transcribe_audio(audio_bytes: bytes, api_key: str) -> str:
+    response = requests.post(
+        "https://api.deepgram.com/v1/listen",
+        headers={
+            "Authorization": f"Token {api_key}",
+            "Content-Type": "audio/wav"
+        },
+        data=audio_bytes
+    )
+    if response.status_code == 200:
+        return response.json()["results"]["channels"][0]["alternatives"][0]["transcript"]
+    else:
+        raise RuntimeError(f"Transcription failed: {response.text}")
