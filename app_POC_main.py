@@ -90,6 +90,9 @@ if st.session_state.authenticated and not st.session_state.submitted:
     else:  # Voice input
         if not st.session_state.audio_submitted:
             st.markdown("#### Record or upload your audio")
+            
+            # Helpful instruction
+            st.markdown("*Once you stop recording, transcription will begin. Please wait...*")
             uploaded_file = st.file_uploader("Upload .wav or .m4a file", type=["wav", "m4a"])
             audio_bytes = st_audiorec() or (uploaded_file.read() if uploaded_file else None)
 
