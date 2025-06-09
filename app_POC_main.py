@@ -32,10 +32,20 @@ if not st.session_state.authenticated:
     if st.button("Submit Password"):
         if password == APP_PASSWORD:
             st.session_state.authenticated = True
+            st.experimental_rerun()
         else:
             st.session_state.password_attempts += 1
             st.warning("Incorrect password.")
-    st.stop()
+            st.stop()
+
+st.markdown("""
+### How It Works
+
+Once you submit your interview answer, it will be logged along with your name and email.  
+You will **receive feedback via email within 1 week** from an experienced **McKinsey interview coach**.
+
+Make sure your email is correct so we can get back to you.
+""")
 
 # --- Get User Info ---
 user_name = st.text_input("Your name")
